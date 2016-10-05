@@ -4,12 +4,16 @@ import matplotlib.animation as animation
 import time
 import datetime
 from mpl_toolkits.mplot3d import Axes3D
-
+import copy
+import pandas as pd
+import vispy
+import pyqtgraph
 
 class particle():
 
-    def __init__(self, x, y, z, mass, vx, vy, vz):
+    def __init__(self, name, x, y, z, mass, vx, vy, vz):
 
+        self.name = str(name)
         self.x = x
         self.y = y
         self.z = z
@@ -31,6 +35,9 @@ class particle():
         self.x += self.vx * dt
         self.y += self.vy * dt
         self.z += self.vz * dt
+        
+    def trait(self):
+        return {'x':self.x, 'y':self.y, 'z':self.z, 'vx':self.vx, 'vy':self.vy, 'vz':self.vz, 'mass':self.mass, 'radius':self.radius}
 
 class quadtreeNode():
 
@@ -178,15 +185,42 @@ class quadtree ():
         self.xl += 0.5
         self.yl += 0.5
         self.zl += 0.5
+        
+                
+        self.timestep = 0
+        pnames = []
+        for p in self.particles:
+            pnames.append(p.name)
+        self.log = pd.DataFrame(columns = pnames)
+        
+        row_list = {}
+        for p in self.particles:
+            
+            row_list.update({p.name: p.trait()})
+        
+        
+        self.log.loc[self.timestep] = row_list
+
+        
         self.q = quadtreeNode(self.xs, self.ys, self.zs, self.xl, self.yl, self.zl)
         for n in range(len(particles)):
             self.q.addParticle(particles[n])
+            
+    
 
     def timeStep (self, dt, assumptionValue=0.5):
         for p in self.particles:
             self.q.gravForce(p, dt=dt, assumptionValue=assumptionValue)
         for p in self.particles:
             p.move(dt)
+            
+        self.timestep += dt
+        row_list = {}
+        for p in self.particles:    
+            row_list.update({p.name: p.trait()})
+        
+        self.log.loc[self.timestep] = row_list
+        
     def plot(self):
         fig = plt.figure()
         ax = fig.add_subplot(111,projection='3d')
@@ -200,90 +234,103 @@ class quadtree ():
             ax.plot_surface(xm, ym, zm, rstride=1, cstride=1)
         plt.show()
 
-particles = []
+    def copy(self):
+        newq = copy.deepcopy(self)
+        return newq
+    
+    def saveLog(self, name):
+        self.log.to_csv(name)
 
-for n in range(50):
-    particles.append(particle(x=np.random.randint(-10000,10000),
-                                y = np.random.randint(-10000,10000),
-                                z = np.random.randint(-10000,10000),
-                                mass = np.random.randint(10, 100),
-                                vx = np.random.randint(0,10),
-                                vy = np.random.randint(0,10),
-                                vz = np.random.randint(0,10)
-                                ))
-q = quadtree(particles=particles)
-q.plot()
-q.timeStep(dt=100)
-q.plot()
 
 def init():
     fig = plt.figure()
     ax = fig.add_subplot(111,projection='3d')
+    
     phi = np.linspace(0,2*np.pi,15)
     theta = np.linspace(0,np.pi, 15)
 
-    for p in self.particles:
-        xm = p.radius * np.outer(np.cos(phi), np.sin(theta)) + p.x
-        ym = p.radius * np.outer(np.sin(phi), np.sin(theta)) + p.y
-        zm = p.radius * np.outer(np.ones(np.size(phi)), np.cos(theta)) + p.z
-        ax.plot_surface(xm, ym, zm, rstride=1, cstride=1)
+    
+    
 
 
 
 def animate(i):
+    print(i)
     ax.clear()
-    Cloud = simulation[i]
-    X, Y, Z, Mass, Radius = Cloud.status()
-    CMX, CMY, CMZ = Cloud.cm()
-    ax.set_xlim3d(CMX-space,CMX+space)
-    ax.set_ylim3d(CMY-space,CMY+space)
-    ax.set_zlim3d(CMZ-space,CMZ+space)
+    q = simulation[i]
+
     phi = np.linspace(0,2*np.pi,10)
     theta = np.linspace(0,np.pi, 10)
 
-    #newCloud = newCloud.copy()
-    #newCloud.timestep(dt)
-    #X, Y, Z, Mass, Radius = newCloud.status()
+    
+    
 
-    for j in range(len(X)):
-        xm = Radius[j] * np.outer(np.cos(phi), np.sin(theta)) + X[j]
-        ym = Radius[j] * np.outer(np.sin(phi), np.sin(theta)) + Y[j]
-        zm = Radius[j] * np.outer(np.ones(np.size(phi)), np.cos(theta)) + Z[j]
-        ax.plot_surface(xm, ym, zm, rstride=1, cstride=1, color=Cloud.clumps[j].color)
-
+    for p in q.particles:
+        xm = p.radius * np.outer(np.cos(phi), np.sin(theta)) + p.x
+        ym = p.radius * np.outer(np.sin(phi), np.sin(theta)) + p.y
+        zm = p.radius * np.outer(np.ones(np.size(phi)), np.cos(theta)) + p.z
+        ax.plot_surface(xm, ym, zm, rstride=1, cstride=1)
+    
+    #ax.set_xlim((10000*(q.q.cmxsum//10000))-10000,(10000*(q.q.cmxsum//10000))+10000)
+    #ax.set_ylim((10000*(q.q.cmysum//10000))-10000,(10000*(q.q.cmysum//10000))+10000)
+    #ax.set_zlim((10000*(q.q.cmzsum//10000))-10000,(10000*(q.q.cmzsum//10000))+10000)
+    
     #ax.draw()
     #ax.show()
-    ax.view_init(elev=20., azim=i)
+    ax.view_init(elev=20., azim=i/16)
 
 
 # Set up formatting for the movie files
+print("Starting simulation")
 startTime = time.time()
-Writer = animation.writers['ffmpeg']
-writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=18000)
+#Writer = animation.writers['ffmpeg']
+#writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=18000)
 #mywriter = animation.FFMpegWriter()
 
-duration = 5000
-dt = 1000
-v=0.001
-simulation=[]
-newCloud = Cloud(N=n, V=v, Space = space, Mass = mass)
-simulation.append(newCloud)
+duration = 100
+dt = 100000
+v=0.0001
+particles = []
+n=1000
+print("Simulation of {0} particles, {1} second timestep, {2} m/s initial velocity, and {3} timesteps".format(n, dt, v, duration))
+      
+print("Creating particles")
+for i in range(n):
+    particles.append(particle(name = '{0}'.format(i),
+                              x=np.random.randint(-5000,5000),
+                              y = np.random.randint(-5000,5000),
+                              z = np.random.randint(-5000,5000),
+                              mass = np.random.randint(1000, 10000),
+                              vx = v*np.random.random()-v*np.random.random(),
+                              vy = v*np.random.random()-v*np.random.random(),
+                              vz = v*np.random.random()-v*np.random.random()
+                              ))
+#q = quadtree(particles=particles)
+
+#simulation=[]
+Q = quadtree(particles=particles)
+#simulation.append(Q)
+print("Advancing simulation")
 for i in range(duration):
-    tempCloud=simulation[i].copy()
-    tempCloud.timeStep(dt)
+    #tempq=simulation[i].copy()
+    #tempq.timeStep(dt)
+    Q.timeStep(dt)
+    #simulation.append(tempq)
+    print(i)
 
-    simulation.append(tempCloud)
-
-
+Q.saveLog('TestFile.csv')
+'''
 fig = plt.figure()
 ax = fig.add_subplot(111,projection='3d')
 
-
+print("Animating")
 ani=animation.FuncAnimation(fig, animate, duration, interval=1, init_func = init, blit=False)
+print("Saving video")
 Timestamp = ('{:%Y-%b-%d_%H:%M:%S}'.format(datetime.datetime.now()))
-ani.save("GravEx%iParticles_%iSpace_%s.mp4"%(n,space, Timestamp), writer=writer)
-finishTime = time.time()
+ani.save("GravEx%iParticles_%s.mp4"%(n, Timestamp), fps=30, bitrate=18000)
+
 #ani.save("GravitationExperiment.mp4")
 #plt.show()
-
+'''
+finishTime = time.time()
 print("Total Calculation Time is %0.4f seconds."%(finishTime-startTime))
